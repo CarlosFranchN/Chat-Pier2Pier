@@ -7,12 +7,10 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Scanner;
 
-/**
- *
- * @author londres-27
- */
+
 public class Peer {
     private String username;
     private ServerSocket serverSocket;
@@ -48,10 +46,22 @@ public class Peer {
 
     private void handleConnection(Socket socket) {
         try (BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
-            String message;
+            PrintWriter out =new PrintWriter(socket.getOutputStream(),true);
             
+            String userName = in.readLine();
+            if (userName == null){
+                socket.close();
+                return;
+            }
+            synchronized (connections) {
+                connections.put(userName,socket);
+            }
+
+            System.out.println(userName + " se conectou");
+            String message;
             while ((message = in.readLine()) != null) {
-                System.out.println(message);
+                System.out.println(userName + ": " + message);
+                broadcastMessage(userName ,message);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -61,37 +71,44 @@ public class Peer {
     private void listenForUserInput() {
         try (BufferedReader userInput = new BufferedReader(new InputStreamReader(System.in))) {
         while (true) {
-        String message = userInput.readLine();
-        broadcastMessage(message);
+            String message = userInput.readLine();
+            broadcastMessage(username,message);
         }
         } catch (IOException e) {
         e.printStackTrace();
         }
         }
 
-    private void broadcastMessage(String message) {
-        for (Socket socket : connections) {
-            try {
-            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-            out.println(username + ": " + message);
-            } catch (IOException e) {
-            e.printStackTrace();
-            }
-            } 
-    }
+    private void broadcastMessage(String sender , String message) {
 
-    public void connectToPeer(String host, int porta) {
+        for (Map.Entry<String, Socket> entry : connections.entrySet()){
+            try {
+                Socket socket = entry.getValue();
+                PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+                out.println(sender + ": " + message);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        } 
+    }
+    public void connectToPeer(String host, int port) {
         try {
-            Socket socket = new Socket(host, porta);
-            connections.add(socket);
+            Socket socket = new Socket(host, port);
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+            out.println(username); // Envia o nome do usuário para o peer
+
+            synchronized (connections) {
+                // connections.put(host + ":" + port, socket); // Salva no mapa de conexões
+                connections.put(username,socket);
+            }
+
             new Thread(() -> handleConnection(socket)).start();
-            System.out.println("Conectado com sucesso! Em peer " + host + ":" + porta);
+            System.out.println("✅ Conectado com sucesso a " + host + ":" + port);
+
         } catch (IOException e) {
-            System.out.println("Falha em conectar! Em peer " + host + ":" + porta);
-            throw new RuntimeException(e);
+            System.out.println("❌ Falha ao conectar a " + host + ":" + port);
         }
     }
-
     public static void main(String[] args) throws IOException {
         Scanner scanner = new Scanner(System.in);
         System.out.println("Digite o seu nome do usuario: ");
